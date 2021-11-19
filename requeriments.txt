@@ -1,0 +1,8 @@
+py-videocore 
+  -https://github.com/nineties/py-videocore for RPi Zero/1/2/3
+py-videocore6 
+  -https://github.com/Idein/py-videocore6 for RPi 4 
+pandas
+cgroups
+psutil
+numpy
