@@ -1,0 +1,9 @@
+Description=Dataset generation service
+After=network.target
+
+[Service]
+ExecStart= /bin/sh -c 'cd /home/pi/TREASURE; bash run_gpu_treasure.sh'
+
+[Install]
+WantedBy=multi-user.target
+
