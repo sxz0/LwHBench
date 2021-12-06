@@ -1,6 +1,8 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
- 
+
+      // code taken from https://matthewarcus.wordpress.com/2018/01/27/using-the-cycle-counter-registers-on-the-raspberry-pi-3/
+
 void enable_ccr(void *info) {
   // Set the User Enable register, bit 0
   asm volatile ("mcr p15, 0, %0, c9, c14, 0" :: "r" (1));
