@@ -381,7 +381,7 @@ def sgemm_rnn_naive():
         def Gflops(sec):
             return (2 * P * Q * R + 3 * P * R) / sec * 1e-9
 
-        return [time_ref,time_gpu] #Gflops(time_ref),time_gpu,Gflops(time_gpu)]
+        return time_gpu #Gflops(time_ref),time_gpu,Gflops(time_gpu)]
 
 def sleep(duration):
     duration=duration*1000000000
@@ -415,6 +415,13 @@ def cpu_hash():
     with RegisterMapping() as regmap:
         with PerformanceCounter(regmap, [CORE_PCTR_CYCLE_COUNT]) as pctr:
             h=int(hashlib.sha256("test string".encode('utf-8')).hexdigest(), 16) % 10**8
+            result = pctr.result()
+            return (result[0])
+
+def cpu_fib(n):
+    with RegisterMapping() as regmap:
+        with PerformanceCounter(regmap, [CORE_PCTR_CYCLE_COUNT]) as pctr:
+            h=fib(n)
             result = pctr.result()
             return (result[0])
 
@@ -540,7 +547,7 @@ def summation(*, length, num_qpus=8, unroll_shift=5):
         end = time.perf_counter_ns()
 
         assert sum(Y) % 2**32 == (length - 1) * length // 2 % 2**32
-        return [end - start] #,length * 4 / (end - start) * 1e-6]
+        return end - start #,length * 4 / (end - start) * 1e-6]
 
 @qpu
 def qpu_scopy(asm, *, num_qpus, unroll_shift, code_offset,
@@ -1202,11 +1209,11 @@ def main():
     results.append(cpu_hash())
     results.append(cpu_random())
     results.append(cpu_true_random(r))
+    results.append(cpu_fib(20))
 
-    for i in sgemm_rnn_naive():
-        results.append(i)
-
-
+    results.append(sgemm_rnn_naive())
+    results.append(summation(length=32 * 1024 * 1024))
+    results.append(scopy(length=16 * 1024 * 1024))
 
     #### Memory test
     results.append(array_append())

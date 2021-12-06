@@ -20,6 +20,7 @@ import psutil
 import rpi_vcsm
 from cgroups import Cgroup
 from videocore.assembler import qpu, assemble, print_qbin
+from random import getrandbits
 
 dri=Driver()
 
@@ -681,8 +682,119 @@ def sgemm():
         def Gflops(sec):
             return (2*p*q*r + 3*p*r)/sec * 1e-9
 
-        return [elapsed_ref,elapsed_gpu] 
-        
+        return elapsed_gpu
+
+@qpu
+def boilerplate(asm, f, nout):
+    setup_dma_load(nrows=1)
+    start_dma_load(uniform)
+    wait_dma_load()
+    setup_vpm_read(nrows=1)
+    setup_vpm_write()
+
+    f(asm)
+
+    setup_dma_store(nrows=nout)
+    start_dma_store(uniform)
+    wait_dma_store()
+    exit()
+
+def run_code(code, X, output_shape, output_type):
+    cache_mode = rpi_vcsm.CACHE_NONE
+    dri=Driver()
+    with dri as drv:
+        X = drv.copy(X)
+        Y = drv.alloc(output_shape, dtype=output_type)
+        start = time.perf_counter_ns()
+        drv.execute(
+                n_threads=1,
+                program=drv.program(boilerplate, code, output_shape[0]),
+                uniforms=[X.address, Y.address]
+                )
+        elapsed_gpu = time.perf_counter_ns() - start
+        return elapsed_gpu
+
+
+@qpu
+def cond_add(asm):
+    mov(ra0, vpm)
+    nop()
+
+    mov(r1, ra0)
+    iadd(r1, r1, 1, cond='never')
+    mov(vpm, r1)
+
+    ldi(r2, [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1])
+    ldi(r3, [0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1])
+    isub(null, r2, r3)
+    mov(r1, ra0)
+    iadd(r1, r1, 1, cond='zs', set_flags = False)
+    mov(vpm, r1)
+    mov(r1, ra0)
+    iadd(r1, r1, 1, cond='zc', set_flags = False)
+    mov(vpm, r1)
+
+    isub(null, r3, r2)
+    mov(r1, ra0)
+    iadd(r1, r1, 1, cond='ns', set_flags = False)
+    mov(vpm, r1)
+    mov(r1, ra0)
+    iadd(r1, r1, 1, cond='nc', set_flags = False)
+    mov(vpm, r1)
+
+    isub(null, r3, r2)
+    mov(r1, ra0)
+    iadd(r1, r1, 1, cond='cs', set_flags = False)
+    mov(vpm, r1)
+    mov(r1, ra0)
+    iadd(r1, r1, 1, cond='cc', set_flags = False)
+    mov(vpm, r1)
+
+def test_cond_add():
+    X = np.array([getrandbits(32) for i in range(16)]).astype('uint32')
+    t = run_code(cond_add, X, (7, 16), 'uint32')
+    return t
+
+@qpu
+def cond_mul(asm):
+    mov(ra0, vpm)
+    nop()
+
+    mov(r1, ra0)
+    fmul(r1, r1, 2.0, cond='never')
+    mov(vpm, r1)
+
+    ldi(r2, [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1])
+    ldi(r3, [0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1])
+    isub(null, r2, r3)
+    mov(r1, ra0)
+    fmul(r1, r1, 2.0, cond='zs', set_flags = False)
+    mov(vpm, r1)
+    mov(r1, ra0)
+    fmul(r1, r1, 2.0, cond='zc', set_flags = False)
+    mov(vpm, r1)
+
+    isub(null, r3, r2)
+    mov(r1, ra0)
+    fmul(r1, r1, 2.0, cond='ns', set_flags = False)
+    mov(vpm, r1)
+    mov(r1, ra0)
+    fmul(r1, r1, 2.0, cond='nc', set_flags = False)
+    mov(vpm, r1)
+
+    isub(null, r3, r2)
+    mov(r1, ra0)
+    fmul(r1, r1, 2.0, cond='cs', set_flags = False)
+    mov(vpm, r1)
+    mov(r1, ra0)
+    fmul(r1, r1, 2.0, cond='cc', set_flags = False)
+    mov(vpm, r1)
+
+def test_cond_mul():
+    X = np.random.randn(16).astype('float32')
+    t = run_code(cond_mul, X, (7, 16), 'float32')
+    return t
+
 def sleep(duration):
     duration=duration*1000000000
     now = time.perf_counter_ns()
@@ -718,6 +830,13 @@ def cpu_hash():
              result = pctr.result()
              return (sum(result))
 
+def cpu_fib(n):
+    with RegisterMapping(dri) as regmap:
+         with PerformanceCounter(regmap, [13,14,15,16,17,28,19]) as pctr:
+             h=fib(n)
+             result = pctr.result()
+             return (sum(result))
+
 def getHwAddr(ifname):
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -737,7 +856,6 @@ def main():
     inter=inter[0]
     mac=getHwAddr(inter)
 
-
     results=[]
 
     results.append(time.time())
@@ -754,11 +872,11 @@ def main():
     results.append(cpu_hash())
     results.append(cpu_random())
     results.append(cpu_true_random(r))
+    results.append(cpu_fib(20))
 
-    for i in sgemm():
-        results.append(i)
-
-
+    results.append(sgemm())
+    results.append(test_cond_add())
+    results.append(test_cond_mul())
 
     #### Memory test
     results.append(array_append())
@@ -776,4 +894,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
