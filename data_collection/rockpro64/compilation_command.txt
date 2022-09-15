@@ -1,0 +1,1 @@
+scons Werror=0 -j2 debug=0 neon=1 opencl=1 os=linux arch=arm64-v8a openmp=1 examples=1 asserts=1 build=native
