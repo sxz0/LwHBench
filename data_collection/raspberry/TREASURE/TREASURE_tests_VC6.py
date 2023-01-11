@@ -670,7 +670,7 @@ def scopy(*, length, num_qpus=8, unroll_shift=0):
 
         assert np.array_equal(X, Y)
 
-        return[end - start] #, length * 4 / (end - start) * 1e-6]
+        return end - start #, length * 4 / (end - start) * 1e-6]
 
 @qpu
 def qpu_memset(asm, *, num_qpus, unroll_shift, code_offset,
